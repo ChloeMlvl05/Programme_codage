@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jeu de Memory</title>
+  <style>
+    :root {
+      --bg: #f4f1ec;
+      --card-back: #3d5a80;
+      --card-front: #ffffff;
+      --accent: #ee6c4d;
+      --text: #293241;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px;
+    }
+
+    h1 {
+      margin: 0 0 16px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    select,
+    button {
+      font: inherit;
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 2px solid var(--text);
+      background: #fff;
+      cursor: pointer;
+    }
+
+    button {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .stats {
+      display: flex;
+      gap: 24px;
+      margin-bottom: 20px;
+      font-weight: 600;
+    }
+
+    .board {
+      display: grid;
+      gap: 10px;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    .card {
+      aspect-ratio: 1;
+      perspective: 600px;
+      cursor: pointer;
+      border: none;
+      padding: 0;
+      background: none;
+    }
+
+    .card-inner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      transition: transform 0.4s;
+      transform-style: preserve-3d;
+    }
+
+    .card.flipped .card-inner,
+    .card.matched .card-inner {
+      transform: rotateY(180deg);
+    }
+
+    .face {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      backface-visibility: hidden;
+      font-size: clamp(1.6rem, 8vw, 2.6rem);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, .15);
+    }
+
+    .back {
+      background: var(--card-back);
+      color: #fff;
+    }
+
+    .front {
+      background: var(--card-front);
+      transform: rotateY(180deg);
+    }
+
+    .front img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 10px;
+      display: block;
+    }
+
+    .card.matched .front {
+      background: #d8f3dc;
+    }
+
+    .message {
+      margin-top: 20px;
+      font-size: 1.2rem;
+      font-weight: 700;
+      min-height: 1.6em;
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>🧠 Jeu de Memory</h1>
+
+  <div class="controls">
+    <label>Niveau :
+      <select id="level">
+        <option value="6">Facile (4×3)</option>
+        <option value="8" selected>Moyen (4×4)</option>
+        <option value="10">Difficile (5×4)</option>
+      </select>
+    </label>
+    <button id="restart">Nouvelle partie</button>
+  </div>
+
+  <div class="stats">
+    <span>Coups : <span id="moves">0</span></span>
+    <span>Temps : <span id="time">0</span> s</span>
+  </div>
+
+  <div class="board" id="board"></div>
+  <div class="message" id="message"></div>
+
+  <script>
+    // Remplace ces chemins par tes propres images (12 images max, il en faut au moins 10)
+    const IMAGES = [
+      "Ame.jpg",
+      "Cheryl.jpg",
+      "Chloe.jpg",
+      "Clara.jpg",
+      "ecole.jpg",
+      "Evy.jpg",
+      "Georgina.jpg",
+      "Gwen.jpg",
+      "Kass.jpg",
+      "Keva.jpg",
+      "Mirah.jpg",
+      "Teena.jpg"
+    ];
+    const board = document.getElementById("board");
+    const movesEl = document.getElementById("moves");
+    const timeEl = document.getElementById("time");
+    const messageEl = document.getElementById("message");
+    const levelEl = document.getElementById("level");
+
+    let first = null;
+    let second = null;
+    let lock = false;
+    let moves = 0;
+    let matches = 0;
+    let totalPairs = 0;
+    let seconds = 0;
+    let timer = null;
+
+    function shuffle(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+      return array;
+    }
+
+    function startTimer() {
+      clearInterval(timer);
+      timer = setInterval(() => {
+        seconds++;
+        timeEl.textContent = seconds;
+      }, 1000);
+    }
+
+    function newGame() {
+      clearInterval(timer);
+      timer = null;
+      first = second = null;
+      lock = false;
+      moves = 0;
+      matches = 0;
+      seconds = 0;
+      movesEl.textContent = 0;
+      timeEl.textContent = 0;
+      messageEl.textContent = "";
+
+      totalPairs = parseInt(levelEl.value, 10);
+      const cols = totalPairs === 10 ? 5 : 4;
+      board.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+      board.innerHTML = "";
+
+      const symbols = shuffle(IMAGES.slice()).slice(0, totalPairs);
+      const deck = shuffle([...symbols, ...symbols]);
+
+      deck.forEach(symbol => {
+        const card = document.createElement("button");
+        card.className = "card";
+        card.dataset.symbol = symbol;
+        card.setAttribute("aria-label", "Carte cachée");
+        card.innerHTML = `
+        <div class="card-inner">
+          <div class="face back">?</div>
+          <div class="face front"><img src="${symbol}" alt="Image du memory"></div>
+        </div>`;
+        card.addEventListener("click", () => flip(card));
+        board.appendChild(card);
+      });
+    }
+
+    function flip(card) {
+      if (lock || card === first || card.classList.contains("matched")) return;
+      if (!timer) startTimer();
+
+      card.classList.add("flipped");
+
+      if (!first) {
+        first = card;
+        return;
+      }
+
+      second = card;
+      moves++;
+      movesEl.textContent = moves;
+      lock = true;
+
+      if (first.dataset.symbol === second.dataset.symbol) {
+        first.classList.add("matched");
+        second.classList.add("matched");
+        matches++;
+        resetTurn();
+        if (matches === totalPairs) win();
+      } else {
+        setTimeout(() => {
+          first.classList.remove("flipped");
+          second.classList.remove("flipped");
+          resetTurn();
+        }, 900);
+      }
+    }
+
+    function resetTurn() {
+      first = second = null;
+      lock = false;
+    }
+
+    function win() {
+      clearInterval(timer);
+      messageEl.textContent = `🎉 Bravo ! ${moves} coups en ${seconds} secondes.`;
+    }
+
+    document.getElementById("restart").addEventListener("click", newGame);
+    levelEl.addEventListener("change", newGame);
+    newGame();
+  </script>
+</body>
+
+</html>
